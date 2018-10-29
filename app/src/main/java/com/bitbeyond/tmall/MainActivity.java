@@ -11,14 +11,17 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.support.v7.app.AppCompatActivity;
+import android.telephony.TelephonyManager;
 import android.util.Log;
 import android.view.ViewGroup;
 import android.webkit.CookieSyncManager;
+import android.webkit.JavascriptInterface;
 import android.widget.FrameLayout;
 import android.widget.Toast;
 
@@ -59,7 +62,16 @@ public class MainActivity extends AppCompatActivity {
             "document.getElementById('J_SubmitStatic').click();";
     private String account = "";
 
+
+    private static final String InjectionCookies = "javascript:document.cookie";
     private static final String Injection = "javascript:document.body.innerText";
+    private static final String GetDataId = "javascript:var nodes = document.getElementsByTagName('dl'); var array=[];for(var i =0; i < document.getElementsByTagName('dl').length; i++){array.push(nodes[i].getAttribute('data-id'));}array";
+
+    private String SlideNexus4 = "input swipe 436 335 640 334 800\n";
+    private String TapNexus4 = "input tap 544 334\n";
+
+    private String SlideNexus5 = "input swipe 617 486 905 486 800\n";
+    private String TapNexus5 = "input tap 762 484\n";
 
     private String taskUrl = "";
     private String taskId = "";
@@ -100,6 +112,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int UPDATE = 0x113;//更新查询
     private static final int DOWN = 0x114;//下载成功
     private static final int SHOW = 0x115;//开始下载
+    private static final int RESTART = 0x116;//开始下载
 
 
     private Handler mHandler = new Handler() {
@@ -116,6 +129,7 @@ public class MainActivity extends AppCompatActivity {
                     break;
                 }
                 case GET: {
+                    removeMessages(GET);
                     new GetTask().execute();
                     break;
                 }
@@ -126,6 +140,8 @@ public class MainActivity extends AppCompatActivity {
                             Log.i(TAG, "登录时注入结果：     " + s);
                         }
                     });
+
+                    //mHandler.sendEmptyMessageDelayed(RESTART,30*60*1000);
                     break;
                 }
                 case PUSH: {
@@ -209,14 +225,32 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(MainActivity.this, "downloading", Toast.LENGTH_SHORT).show();
                     break;
                 }
+                case RESTART:
+                    removeMessages(GET);
+                    removeMessages(GET);
+                    finish();
+                    break;
+                default:
+                    break;
             }
         }
     };
 
+    String imei;
+
+    @SuppressLint("MissingPermission")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        try {
+            TelephonyManager telephonyManager = (TelephonyManager) this.getSystemService(Context.TELEPHONY_SERVICE);
+            imei = telephonyManager.getDeviceId();
+        } catch (Exception e) {
+            imei = "";
+        }
+
         Intent intent = getIntent();
         try {
             account = intent.getStringExtra("account");
@@ -242,7 +276,7 @@ public class MainActivity extends AppCompatActivity {
         webSetting.setLoadWithOverviewMode(true);
         webSetting.setSupportZoom(true); //支持缩放，默认为true。是下面那个的前提。
         webSetting.setBuiltInZoomControls(true); //设置内置的缩放控件。若为false，则该WebView不可缩放
-        webSetting.setDisplayZoomControls(false); //隐藏原生的缩放控件
+        webSetting.setDisplayZoomControls(true); //隐藏原生的缩放控件
         webSetting.setJavaScriptEnabled(true);
         webSetting.setUserAgentString("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36");
         webSetting.setDefaultTextEncodingName("utf-8");
@@ -252,10 +286,22 @@ public class MainActivity extends AppCompatActivity {
 
         webSetting.setLoadsImagesAutomatically(false);//不允许加载图片
 
+        mWebView.addJavascriptInterface(new MyJavaScriptInterface(), "Tmall_zz");
         CookieSyncManager.createInstance(this);
         CookieSyncManager.getInstance().sync();
 
         mWebView.loadUrl(loginUrl);
+    }
+
+    class MyJavaScriptInterface {
+        @JavascriptInterface
+        @SuppressWarnings("unused")
+        public void processHTML(String html) {
+            // 在这里处理html源码
+            Log.i(TAG, "html:\n"+html);
+            result = html;
+            mHandler.sendEmptyMessage(PUSH);
+        }
     }
 
 
@@ -275,6 +321,15 @@ public class MainActivity extends AppCompatActivity {
         public void onPageFinished(WebView view, String url) {
             Log.i(TAG, "onPageFinished      " + url);
 
+            mWebView.evaluateJavascript(InjectionCookies, new ValueCallback<String>() {
+                @Override
+                public void onReceiveValue(String s) {
+                    Log.w(TAG, s);
+                    if (s.length()>10)
+                        new PushCookie().execute(s);
+                }
+            });
+
             if (url.contains("https://i.taobao.com/my_taobao.htm") || url.contains("https://www.taobao.com/")) {
                 error_count = 0;
 
@@ -290,7 +345,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             } else if (url.startsWith("https://login.taobao.com")) {
                 error_count = 0;
-
+                Log.i(TAG, "在登录界面");
                 mHandler.sendEmptyMessageDelayed(INJECTION, 10 * 1000);
 
             } else if (url.startsWith("https://login.tmall.com")) {
@@ -310,7 +365,65 @@ public class MainActivity extends AppCompatActivity {
                     public void onReceiveValue(String s) {
                         Log.i(TAG, "搜索结果：     " + s);
                         result = s;
-                        mHandler.sendEmptyMessage(PUSH);
+                        Log.i(TAG, "手机牌子为："+Build.MODEL);
+                        if (s.contains("请按住滑块，拖动到最右边")){
+                            new Thread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (!Build.MODEL.equals("Nexus 5")) {
+
+                                        shell.execute("input swipe 436 335 640 334 800\n");
+                                        sleep(3);
+                                        shell.execute("input tap 762 484\n");
+                                        sleep(2);
+                                        shell.execute("input swipe 430 333 646 334 1000\n");
+                                        sleep(3);
+                                        shell.execute("input tap 544 334\n");
+                                        sleep(1);
+                                        shell.execute("input swipe 432 333 645 334 1500\n");
+                                        sleep(3);
+                                        shell.execute("input tap 544 334\n");
+                                        for (int i = 0; i < 7; i++) {
+                                            sleep(1);
+                                            shell.execute("input swipe 430 333 643 334 1800\n");
+                                            sleep(3);
+                                            shell.execute("input tap 544 334\n");
+                                        }
+                                        sleep(1);
+                                        shell.execute("input swipe 431 333 643 333 1000\n");
+                                        sleep(2);
+                                        shell.execute("input tap 544 334\n");
+                                    }else {
+                                        shell.execute(SlideNexus5);
+                                        sleep(3);
+                                        shell.execute(TapNexus5);
+                                        sleep(2);
+                                        shell.execute("input swipe 615 486 903 487 1000\n");
+                                        sleep(3);
+                                        shell.execute(TapNexus5);
+                                        sleep(1);
+                                        shell.execute("input swipe 613 485 909 487 1500\n");
+                                        sleep(3);
+                                        shell.execute(TapNexus5);
+                                        for (int i = 0; i < 7; i++) {
+                                            sleep(1);
+                                            shell.execute(SlideNexus5);
+                                            sleep(3);
+                                            shell.execute(TapNexus5);
+                                        }
+                                        sleep(1);
+                                        shell.execute("input swipe 616 485 902 487 1000\n");
+                                        sleep(2);
+                                        shell.execute(TapNexus5);
+                                    }
+                                    mHandler.sendEmptyMessageDelayed(GET,3000);
+                                }
+                            }).start();
+
+                        }else {
+                            mHandler.sendEmptyMessage(PUSH);
+                        }
+
                     }
                 });
                 //https://h5api.m.taobao.com/h5/mtop.taobao.detail
@@ -341,11 +454,25 @@ public class MainActivity extends AppCompatActivity {
                 mHandler.sendEmptyMessage(PUSH);
 
             } else if (url.contains("http://api.m.taobao.com/h5/mtop.taobao") || url.contains("https://h5api.m.taobao.com/h5/mtop.taobao.detail") ||
-                    url.contains("taobao.com/category.htm") || url.contains("taobao.com/i/asynSearch.htm") || url.contains("m.tmall.com/shop/shop_auction_search.do")
+                    url.contains("taobao.com/category.htm")  || url.contains("m.tmall.com/shop/shop_auction_search.do")
                     || url.contains("https://s.m.taobao.com/search")) {
                 error_count = 0;
 
                 mWebView.evaluateJavascript(Injection, new ValueCallback<String>() {
+                    @Override
+                    public void onReceiveValue(String s) {
+                        Log.i(TAG, "详情结果：     " + s);
+                        if (s.length() < 1000 && s.contains("哎哟喂,被挤爆啦,请稍后重试!")) {
+                            mHandler.sendEmptyMessageDelayed(GET, 100);
+                        }
+                        result = s;
+                        mHandler.sendEmptyMessage(PUSH);
+                    }
+                });
+            }  else  if (url.contains("taobao.com/i/asynSearch.htm")){
+                // add by zuozhuang 2018.04.02   begin
+                error_count = 0;
+                mWebView.evaluateJavascript(GetDataId, new ValueCallback<String>() {
                     @Override
                     public void onReceiveValue(String s) {
                         Log.i(TAG, "详情结果：     " + s);
@@ -357,14 +484,30 @@ public class MainActivity extends AppCompatActivity {
                         mHandler.sendEmptyMessage(PUSH);
                     }
                 });
-            } else if (url.contains("tmall.com/index.htm")) {
+                // add by zuozhuang 2018.04.02  end
+            }else if (url.contains("tmall.com/index.htm")) {
                 error_count = 0;
 
                 injection();
+            }else if (url.contains("https://list.tmall.com/search_product.htm")) {
+                Log.i(TAG, "网页链接");
+                mWebView.loadUrl("javascript:Tmall_zz.processHTML(document.documentElement.outerHTML);");
+
+            } else {
+                mHandler.sendEmptyMessageDelayed(GET, 3000);
+                Log.e(TAG, "url 错误" );
             }
 
         }
     };
+
+    public void sleep(int seconds){
+        try {
+            Thread.sleep(seconds*1000);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
 
     private boolean shouldOverrideUrlLoadingByApp(String url) {
         Log.i(TAG, "shouldOverrideUrlLoading    " + url);
@@ -438,7 +581,7 @@ public class MainActivity extends AppCompatActivity {
         OkHttpClient mOkHttpClient = builder.build();
         RequestBody body = RequestBody.create(null, results);
         Request request = new Request.Builder()
-                .url("http://120.25.77.136:6324/image/captcha/bitspaceman")
+                .url("http://120.25.209.119:6324/image/captcha/bitspaceman")
                 .post(body)
                 .build();
         Call call = mOkHttpClient.newCall(request);
@@ -514,8 +657,12 @@ public class MainActivity extends AppCompatActivity {
                 mHandler.sendEmptyMessage(GET);
             } catch (Exception e) {
                 e.printStackTrace();
-                jedis.close();
-                jedis.disconnect();
+                try {
+                    jedis.close();
+                    jedis.disconnect();
+                }catch (Exception a){
+
+                }
                 mHandler.sendEmptyMessageDelayed(AUTH, 30000);
             }
             return null;
@@ -551,6 +698,7 @@ public class MainActivity extends AppCompatActivity {
                         }
 
                     } else {
+                        Log.i(TAG, "数据不符合规范");
                         mHandler.sendEmptyMessageDelayed(GET, 2000);
                     }
                 } else {
@@ -560,8 +708,13 @@ public class MainActivity extends AppCompatActivity {
 
             } catch (Exception e) {
                 e.printStackTrace();
-                jedis.close();
-                jedis.disconnect();
+                try {
+                    jedis.close();
+                    jedis.disconnect();
+                }catch (Exception a){
+
+                }
+
                 mHandler.sendEmptyMessageDelayed(AUTH, 2000);
                 mHandler.sendEmptyMessageDelayed(GET, 2000);
 
@@ -578,14 +731,37 @@ public class MainActivity extends AppCompatActivity {
             try {
                 //
                 Log.i(TAG, "异步线程取到的结果：   " + result);
-                jedis.setex("tmall_render_" + taskId, 60, result);
+                jedis.setex("tmall_render_" + taskId, 60*5, result);
                 Log.i(TAG, "上传完成-----------------------------------");
                 long doTime = System.currentTimeMillis() - acceptTime;
-                mHandler.sendEmptyMessageDelayed(GET, 10 - doTime);//增加10秒取任务间隔
+                mHandler.sendEmptyMessageDelayed(GET, 2000 - doTime);//增加10秒取任务间隔
             } catch (Exception e) {
                 e.printStackTrace();
                 mHandler.sendEmptyMessageDelayed(AUTH, 2000);
                 mHandler.sendEmptyMessageDelayed(PUSH, 2000);
+            }
+            return null;
+        }
+
+    }
+
+    private class PushCookie extends AsyncTask<String , Void, Void> {
+
+        @Override
+        protected Void doInBackground(String... params) {
+            try {
+                //
+                Log.i(TAG, "异步线程取到的结果：   " + params[0]);
+                jedis.set("Tmall:tmall_cookie"+System.currentTimeMillis(), params[0], "NX", "EX", 600);
+                //jedis.expire("tmall_cookie",1800);
+                Log.i(TAG, "上传cookie完成-----------------------------------");
+                //long doTime = System.currentTimeMillis() - acceptTime;
+                //mHandler.sendEmptyMessageDelayed(GET, 2000 - doTime);//增加10秒取任务间隔
+            } catch (Exception e) {
+                e.printStackTrace();
+                mHandler.sendEmptyMessageDelayed(AUTH, 1000);
+                sleep(2);
+                new PushCookie().execute(params[0]);
             }
             return null;
         }
@@ -839,6 +1015,7 @@ public class MainActivity extends AppCompatActivity {
         super.onDestroy();
         if (mWebView != null)
             mWebView.destroy();
+        mHandler.removeMessages(RESTART);
         mHandler.removeCallbacksAndMessages(null);
     }
 }

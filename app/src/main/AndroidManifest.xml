@@ -4,6 +4,7 @@
     package="com.bitbeyond.tmall">
 
     <uses-permission android:name="android.permission.DISABLE_KEYGUARD" />
+
     <uses-permission android:name="android.permission.RECEIVE_USER_PRESENT" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
