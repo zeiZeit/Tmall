@@ -64,7 +64,7 @@ public class ConfigActivity extends AppCompatActivity {
         } catch (PackageManager.NameNotFoundException e) {
             e.printStackTrace();
         }
-        version.setText("版本号为："+versionCode);
+        version.setText("Tmall任务-版本号为"+versionCode);
 
 
         submit.setOnClickListener(new View.OnClickListener() {

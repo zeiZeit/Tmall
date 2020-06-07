@@ -33,12 +33,15 @@ import com.tencent.smtt.sdk.WebViewClient;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
@@ -65,6 +68,11 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String InjectionCookies = "javascript:document.cookie";
     private static final String Injection = "javascript:document.body.innerText";
+    private static final String Injectionout = "javascript:document.body.outerHTML";
+    //private static final String Injection = "javascript:window.onload=document.body.innerText;";
+
+    private static final String InjectionBody = "javascript:document.body.innerHTML";
+
     private static final String GetDataId = "javascript:var nodes = document.getElementsByTagName('dl'); var array=[];for(var i =0; i < document.getElementsByTagName('dl').length; i++){array.push(nodes[i].getAttribute('data-id'));}array";
 
     private String SlideNexus4 = "input swipe 436 335 640 334 800\n";
@@ -76,7 +84,7 @@ public class MainActivity extends AppCompatActivity {
     private String taskUrl = "";
     private String taskId = "";
     private String result = "";
-    private long acceptTime = 0l;
+    private long acceptTime = 0L;
 
     private int index = 0;
     private int error_count = 0;
@@ -96,6 +104,12 @@ public class MainActivity extends AppCompatActivity {
     private long mEnqueue;
     private DownLoadReceiver mDownLoadReceiver;
     private int mSuccess = 0;
+
+    private String startUrl = "https://h5.m.taobao.com/trip/hotel/review-list/index.html?hid=0&shid=";
+    private String endUrl = "&ttid=12mtb0000155&_prism_lk=&from=&spm=181.7437892.10677585.2&_preProjVer=1.1.11&_projVer=1.0.29";
+    private ArrayList<String> feizhuIds = new ArrayList<>();
+    private String ss ="h5-hotel-commons.entry.js,pages/review-list/index.entry.js?v=682798756_900531\\\" exparams=\\\"category=&amp;aplus&amp;userdata1=1&amp;";
+
 
     private static final int AUTH = 0x101;
     private static final int LOAD = 0x102;
@@ -130,7 +144,15 @@ public class MainActivity extends AppCompatActivity {
                 }
                 case GET: {
                     removeMessages(GET);
-                    new GetTask().execute();
+                    new GetTask().execute();   //for test remove
+
+                    //add by zuozhuang for test start
+//                    taskUrl = startUrl + feizhuIds.remove(0)+endUrl;
+//                    acceptTime = System.currentTimeMillis();
+//                    mHandler.sendEmptyMessage(LOAD);
+
+                    //add by zuozhuang for test end
+
                     break;
                 }
                 case INJECTION: {
@@ -262,7 +284,34 @@ public class MainActivity extends AppCompatActivity {
 
         mDownLoadReceiver = new DownLoadReceiver();
         mViewParent = (ViewGroup) findViewById(R.id.webView1);
+
         init(mViewParent);
+    }
+
+    /**
+     * 读取飞猪Id到list
+     *@author zeiZeit
+     *@time 2018/11/4  17:23
+     */
+    private void readTxt() {
+        try {
+            InputStream instream = this.getResources().openRawResource(R.raw.feizhu);//new FileInputStream(file);
+            if (instream != null) {
+                InputStreamReader inputreader = new InputStreamReader(instream);
+                BufferedReader buffreader = new BufferedReader(inputreader);
+                String line;
+                //分行读取
+                while (( line = buffreader.readLine()) != null) {
+                    feizhuIds.add(line);
+                }
+                instream.close();
+            }
+        } catch (java.io.FileNotFoundException e) {
+            Log.d("TestFile", "The File doesn't not exist.");
+        } catch (IOException e) {
+            Log.d("TestFile", e.getMessage());
+        }
+
     }
 
     private void init(ViewGroup viewGroup) {
@@ -318,17 +367,21 @@ public class MainActivity extends AppCompatActivity {
         }
 
         @Override
-        public void onPageFinished(WebView view, String url) {
+        public void onPageFinished(WebView view, final String url) {
             Log.i(TAG, "onPageFinished      " + url);
 
-            mWebView.evaluateJavascript(InjectionCookies, new ValueCallback<String>() {
-                @Override
-                public void onReceiveValue(String s) {
-                    Log.w(TAG, s);
-                    if (s.length()>10)
-                        new PushCookie().execute(s);
-                }
-            });
+            if (!url.startsWith("https://login.taobao.com")){
+                mWebView.evaluateJavascript(InjectionCookies, new ValueCallback<String>() {
+                    @Override
+                    public void onReceiveValue(String s) {
+                        Log.w(TAG, s);
+                        if (s.length()>10) {
+                            //new PushCookie().execute(s, url);
+                        }
+                    }
+                });
+            }
+
 
             if (url.contains("https://i.taobao.com/my_taobao.htm") || url.contains("https://www.taobao.com/")) {
                 error_count = 0;
@@ -356,22 +409,35 @@ public class MainActivity extends AppCompatActivity {
 
                 mWebView.loadUrl(loginUrl);
 
-            } else if (url.contains("https://list.tmall.com/m/search_items.htm")) {
-
+            } else if (url.contains("https://list.tmall.com/m/search_items.htm")
+                    ||url.contains("https://rate.tmall.com/list_detail_rate.htm")
+                    ||url.startsWith("https://list.tmall.com/search_product.htm")
+                    ||url.toString().contains("m.1688.m")
+                    ||url.toString().contains("www.1688.com")
+                    ||url.toString().contains("www.flypig.com")
+                    ||url.toString().contains("http://www.taobao.com")
+                    ||url.toString().contains("h5.m.taobao.com")
+                    ||url.toString().contains("m.tmall.com")
+                    ||url.toString().contains("https://2.taobao.com/")
+                    ) {
+                String injection = null;
+                if (url.contains("https://list.tmall.com")){
+                    injection = Injectionout;
+                }else {
+                    injection = Injection;
+                }
                 error_count = 0;
-
-                mWebView.evaluateJavascript(Injection, new ValueCallback<String>() {
+                mWebView.evaluateJavascript(injection, new ValueCallback<String>() {
                     @Override
                     public void onReceiveValue(String s) {
                         Log.i(TAG, "搜索结果：     " + s);
                         result = s;
                         Log.i(TAG, "手机牌子为："+Build.MODEL);
-                        if (s.contains("请按住滑块，拖动到最右边")){
+                        if (s.contains("请按住滑块")){
                             new Thread(new Runnable() {
                                 @Override
                                 public void run() {
-                                    if (!Build.MODEL.equals("Nexus 5")) {
-
+                                    if (!Build.MODEL.contains("5")) {
                                         shell.execute("input swipe 436 335 640 334 800\n");
                                         sleep(3);
                                         shell.execute("input tap 762 484\n");
@@ -416,12 +482,16 @@ public class MainActivity extends AppCompatActivity {
                                         sleep(2);
                                         shell.execute(TapNexus5);
                                     }
-                                    mHandler.sendEmptyMessageDelayed(GET,3000);
+                                    mHandler.sendEmptyMessageDelayed(GET,15000);
                                 }
                             }).start();
 
                         }else {
-                            mHandler.sendEmptyMessage(PUSH);
+                            if (result!=""){
+                                mHandler.sendEmptyMessage(PUSH);
+                            }else {
+                                mHandler.sendEmptyMessageDelayed(GET,3000);
+                            }
                         }
 
                     }
@@ -489,17 +559,17 @@ public class MainActivity extends AppCompatActivity {
                 error_count = 0;
 
                 injection();
-            }else if (url.contains("https://list.tmall.com/search_product.htm")) {
-                Log.i(TAG, "网页链接");
-                mWebView.loadUrl("javascript:Tmall_zz.processHTML(document.documentElement.outerHTML);");
+            } else{
 
-            } else {
                 mHandler.sendEmptyMessageDelayed(GET, 3000);
                 Log.e(TAG, "url 错误" );
+
             }
 
         }
     };
+
+
 
     public void sleep(int seconds){
         try {
@@ -677,11 +747,10 @@ public class MainActivity extends AppCompatActivity {
             try {
 
                 String json = jedis.rpop("tmall_render_task1");
-
                 if (json != null) {
 
                     JSONObject j = new JSONObject(json);
-
+                    Log.i(TAG, "json="+j.toString());
                     taskUrl = j.getString("url");
                     taskId = j.getString("id");
                     long t = j.getLong("t");
@@ -696,6 +765,7 @@ public class MainActivity extends AppCompatActivity {
                             mHandler.sendEmptyMessage(LOAD);
 
                         }
+
 
                     } else {
                         Log.i(TAG, "数据不符合规范");
@@ -730,14 +800,14 @@ public class MainActivity extends AppCompatActivity {
         protected Void doInBackground(Void... params) {
             try {
                 //
-                Log.i(TAG, "异步线程取到的结果：   " + result);
+                //Log.i(TAG, "异步线程取到的结果：   " + result);
                 jedis.setex("tmall_render_" + taskId, 60*5, result);
-                Log.i(TAG, "上传完成-----------------------------------");
+                Log.i(TAG, "上传完成----------------------111-------------");
                 long doTime = System.currentTimeMillis() - acceptTime;
                 mHandler.sendEmptyMessageDelayed(GET, 2000 - doTime);//增加10秒取任务间隔
             } catch (Exception e) {
                 e.printStackTrace();
-                mHandler.sendEmptyMessageDelayed(AUTH, 2000);
+                mHandler.sendEmptyMessageDelayed(AUTH, 10*1000);
                 mHandler.sendEmptyMessageDelayed(PUSH, 2000);
             }
             return null;
@@ -752,16 +822,39 @@ public class MainActivity extends AppCompatActivity {
             try {
                 //
                 Log.i(TAG, "异步线程取到的结果：   " + params[0]);
-                jedis.set("Tmall:tmall_cookie"+System.currentTimeMillis(), params[0], "NX", "EX", 600);
-                //jedis.expire("tmall_cookie",1800);
-                Log.i(TAG, "上传cookie完成-----------------------------------");
+
+
+                    jedis.set("ALI:"+params[1], params[0], "NX", "EX", 600);
+                    //jedis.expire("tmall_cookie",1800);
+                    Log.i(TAG, "上传cookie完成-----------------------------------");
+
+
                 //long doTime = System.currentTimeMillis() - acceptTime;
                 //mHandler.sendEmptyMessageDelayed(GET, 2000 - doTime);//增加10秒取任务间隔
             } catch (Exception e) {
                 e.printStackTrace();
-                mHandler.sendEmptyMessageDelayed(AUTH, 1000);
+                //mHandler.sendEmptyMessageDelayed(AUTH, 1000);
+                try {
+                    jedis = new Jedis(Config.HOST, Config.PORT, Config.TIMEOUT);
+                    jedis.auth(Config.PASSWORD);
+                    jedis.select(2);
+
+
+                } catch (Exception x) {
+                    x.printStackTrace();
+                    try {
+                        jedis.close();
+                        jedis.disconnect();
+                    }catch (Exception a){
+
+                    }
+
+                }
                 sleep(2);
-                new PushCookie().execute(params[0]);
+
+                    new PushCookie().execute(params[0],params[1]);
+
+
             }
             return null;
         }
@@ -776,7 +869,7 @@ public class MainActivity extends AppCompatActivity {
                 //
                 Log.i(TAG, "异步线程取到的结果：   " + result);
                 jedis.hset("tmall_render_error", taskUrl, "1");
-                Log.i(TAG, "上传完成-----------------------------------");
+                Log.i(TAG, "上传完成-------------222----------------------");
                 mHandler.sendEmptyMessageDelayed(GET, 100);
             } catch (Exception e) {
                 e.printStackTrace();
@@ -796,6 +889,7 @@ public class MainActivity extends AppCompatActivity {
         int mNum = 1;
 
         @SuppressLint("LongLogTag")
+        @Override
         protected Void doInBackground(Void... params) {
             String LINK = "http://120.25.255.56/mobileapi/sign?mid=" + Util.getDeviceID(MainActivity.this) +
                     "&cpu=" + Util.getcpu(MainActivity.this) +
